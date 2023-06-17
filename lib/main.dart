@@ -18,6 +18,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      //home: const Doctorpage(),
       home: const Welcomepage(),
       builder: EasyLoading.init(),
     );

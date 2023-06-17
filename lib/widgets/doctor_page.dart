@@ -1,31 +1,78 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_easyloading/flutter_easyloading.dart';
+import 'package:gestion_hopital/models/rdv_model.dart';
 
-import 'package:gestion_hopital/appointment_page.dart';
+import '../models/drdv_model.dart';
 
-class doctorpage extends StatefulWidget {
-  const doctorpage({super.key});
+class Doctorpage extends StatefulWidget {
+  const Doctorpage({super.key});
 
   @override
-  State<doctorpage> createState() => _doctorpageState();
-
-  _doctorpageState() {}
+  State<Doctorpage> createState() => _DoctorpageState();
 }
 
-class _doctorpageStte extends State<doctorpage> {
-  List symptmos = [
-    "Temperature",
-    "Snuffle",
-    "Fever",
-    "Cough",
-    "Cold",
-  ];
+class _DoctorpageState extends State<Doctorpage> {
+  //! REQUET SUR LES DEMANDES DE RENDEZ-VOUS
+  CollectionReference drdvRef = FirebaseFirestore.instance.collection('drdv');
+  List<QueryDocumentSnapshot<Object?>> drdvDocs = [];
+  List<DrdvModel> drdvInstance = [];
+  Future<List<DrdvModel>> getDemandRdv() async {
+    drdvInstance.clear();
 
-  List imgs = [
-    "doctor1.jpg",
-    "doctor2.jpg",
-    "doctor3.jpg",
-    "doctor4.jpg",
-  ];
+    QuerySnapshot<Object?> drdvQuery = await drdvRef.get();
+    drdvDocs = drdvQuery.docs;
+    for (QueryDocumentSnapshot<Object?> drdv in drdvDocs) {
+      Map<String, dynamic> drdvData = drdv.data() as Map<String, dynamic>;
+
+      drdvInstance.add(DrdvModel.fromJson(drdvData));
+    }
+
+    return drdvInstance;
+  }
+
+//! REFUSER UNE DEMANDE DE RENDEZ VOUS
+  Future<void> deleteDrdv(int drdvIndex) async {
+    EasyLoading.show();
+    QuerySnapshot<Object?> drdvQuery = await drdvRef
+        .where('userId', isEqualTo: drdvInstance[drdvIndex].userId)
+        .get();
+    for (QueryDocumentSnapshot<Object?> drdv in drdvQuery.docs) {
+      await drdvRef.doc(drdv.id).delete();
+      setState(() {
+        drdvInstance.removeAt(drdvIndex);
+      });
+    }
+    EasyLoading.dismiss();
+  }
+
+  //! ACCEPTER UNE DEAMANDEDE RANDEZ VOUS
+  Future<void> acceptRdv(int drdvIndex) async {
+    CollectionReference rdvRef = FirebaseFirestore.instance.collection('rdv');
+    RdvModel rdvModel = RdvModel(
+      email: drdvInstance[drdvIndex].email,
+      name: drdvInstance[drdvIndex].name,
+      phone: drdvInstance[drdvIndex].phone,
+      userId: drdvInstance[drdvIndex].userId,
+      dateTime: DateTime.now(),
+    );
+    EasyLoading.show();
+    await rdvRef.add(rdvModel.toJson());
+    EasyLoading.dismiss();
+    deleteDrdv(drdvIndex);
+    setState(() {
+      drdvInstance.removeAt(drdvIndex);
+    });
+    EasyLoading.showSuccess("Rendez vous accepter");
+  }
+
+  @override
+  void initState() {
+    drdvInstance.clear();
+    getDemandRdv();
+
+    super.initState();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -171,67 +218,91 @@ class _doctorpageStte extends State<doctorpage> {
               ),
             ),
           ),
-          GridView.builder(
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 2,
-            ),
-            itemCount: 1,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemBuilder: (context, index) {
-              return InkWell(
-                onTap: () {
-                  Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const Appointmentpage(),
-                      ));
-                },
-                child: Container(
-                  margin: const EdgeInsets.all(10),
-                  padding: const EdgeInsets.symmetric(vertical: 15),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Colors.black12,
-                        blurRadius: 4,
-                        spreadRadius: 2,
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      CircleAvatar(
-                        radius: 35,
-                        backgroundImage: AssetImage("Image/iiiiimage.jpg"),
-                      ),
-                      const Text(
-                        "Mehdaoui Ryad",
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w500,
-                          color: Colors.black54,
+          FutureBuilder(
+              future: getDemandRdv(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return const Center(
+                    child: Text("INTERNT PROBLEM"),
+                  );
+                }
+                if (snapshot.hasData) {
+                  return GridView.builder(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                    ),
+                    itemCount: drdvInstance.length,
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemBuilder: (context, index) {
+                      return Container(
+                        margin: const EdgeInsets.all(10),
+                        padding: const EdgeInsets.symmetric(vertical: 15),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(10),
+                          boxShadow: const [
+                            BoxShadow(
+                              color: Colors.black12,
+                              blurRadius: 4,
+                              spreadRadius: 2,
+                            ),
+                          ],
                         ),
-                      ),
-                      const Text(
-                        "maladie chronique",
-                        style: TextStyle(
-                          color: Colors.black45,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            const CircleAvatar(
+                              radius: 35,
+                              backgroundImage:
+                                  AssetImage("Image/iiiiimage.jpg"),
+                            ),
+                            Text(
+                              drdvInstance[index].name,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w500,
+                                color: Colors.black54,
+                              ),
+                            ),
+                            Text(
+                              drdvInstance[index].phone,
+                              style: const TextStyle(
+                                color: Colors.black45,
+                              ),
+                            ),
+                            Row(
+                              mainAxisSize: MainAxisSize.max,
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                InkWell(
+                                  onTap: () => deleteDrdv(index),
+                                  child: const Icon(
+                                    Icons.cancel_outlined,
+                                  ),
+                                ),
+                                InkWell(
+                                  onTap: () => acceptRdv(index),
+                                  child: const Icon(
+                                    Icons.check,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                      ),
-                      const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        mainAxisAlignment: MainAxisAlignment.center,
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
+                      );
+                    },
+                  );
+                } else {
+                  return const Center(child: Text("Unknown problem"));
+                }
+              }),
         ],
       ),
     );
